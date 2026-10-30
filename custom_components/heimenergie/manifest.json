@@ -1,0 +1,13 @@
+{
+  "domain": "heimenergie",
+  "name": "HeimEnergie",
+  "version": "0.2.0",
+  "config_flow": true,
+  "documentation": "https://github.com/uhrensohn86/heimenergie-integration",
+  "issue_tracker": "https://github.com/uhrensohn86/heimenergie-integration/issues",
+  "codeowners": ["@uhrensohn86"],
+  "requirements": [],
+  "dependencies": [],
+  "iot_class": "local_push",
+  "single_config_entry": true
+}

@@ -1,0 +1,37 @@
+{
+  "title": "HeimEnergie",
+  "config": {
+    "step": {
+      "user": {
+        "title": "HeimEnergie einrichten",
+        "description": "Geräte aus Home Assistant auswählen. Leistungs- und Energiesensoren werden automatisch gesucht; fehlende Zeitraumzähler werden von HeimEnergie bereitgestellt. Sensoren ohne zugeordnetes Gerät zusätzlich separat auswählen.",
+        "data": {
+          "devices": "Überwachte Geräte",
+          "power_entities": "Leistungssensoren ohne Geräteeintrag (optional)",
+          "price_entity": "Arbeitspreis-Entität (optional)",
+          "price_fixed": "Ersatz-Arbeitspreis (€/kWh)",
+          "base_monthly": "Monatlicher Grundpreis (€)"
+        }
+      }
+    },
+    "error": {
+      "no_power_sensor": "In der Auswahl wurde kein geeigneter Leistungssensor gefunden. Bitte Geräte oder passende Leistungssensoren wählen."
+    },
+    "abort": {"already_configured": "HeimEnergie ist bereits eingerichtet."}
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "HeimEnergie anpassen",
+        "data": {
+          "devices": "Überwachte Geräte",
+          "power_entities": "Leistungssensoren ohne Geräteeintrag (optional)",
+          "price_entity": "Arbeitspreis-Entität (optional)",
+          "price_fixed": "Ersatz-Arbeitspreis (€/kWh)",
+          "base_monthly": "Monatlicher Grundpreis (€)"
+        }
+      }
+    },
+    "error": {"no_power_sensor": "Keine passenden Leistungssensoren gefunden."}
+  }
+}
