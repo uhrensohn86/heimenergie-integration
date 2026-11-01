@@ -6,6 +6,7 @@ from collections.abc import Callable
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.core import callback
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, PERIODS, PERIOD_LABELS
@@ -152,4 +153,15 @@ async def async_setup_entry(hass, entry, async_add_entities):
         register(billed_key, co.mapping["fixed"], f"cost_incl_base_{period}")
         register(energy_key, co.mapping["fixed"], f"total_energy_{period}")
         register(cost_key, co.mapping["fixed"], f"total_cost_{period}")
+    # Remove only obsolete *own* generated per-device sensors from the
+    # entity registry after an options-flow reconfiguration. In v0.2.1 a
+    # derived period sensor could linger as unavailable once the matching
+    # existing utility meter was selected instead. Never touch user sensors.
+    own_prefix = f"{DOMAIN}_{entry.entry_id}_device_"
+    desired_ids = {entity.unique_id for entity in entities}
+    registry = er.async_get(hass)
+    for previous in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if previous.unique_id.startswith(own_prefix) and previous.unique_id not in desired_ids:
+            registry.async_remove(previous.entity_id)
+
     async_add_entities(entities)

@@ -58,37 +58,102 @@ def energy_score(entity_id: str, state: Any) -> int:
     return score
 
 
+# Only complete words match: "day" must never match "weekday", for example.
+def _period_words(period: str) -> set[str]:
+    return set(PERIOD_TOKENS[period])
+
+
+def _period_present(identifier: str, period: str) -> bool:
+    words = identifier.lower().split("_")
+    return any(word in _period_words(period) for word in words)
+
+
+def _device_stems(device_name: str, power_id: str) -> set[str]:
+    names = {slug(device_name), slug(power_id.split(".", 1)[-1])}
+    # Keep stripping common power suffixes to reach the device root.
+    for suffix in ("_current_power", "_current_leistung", "_power", "_leistung"):
+        names.update({name.removesuffix(suffix) for name in tuple(names)})
+    return {name for name in names if name}
+
+
+def _kind_valid(entity_id: str, state: Any, kind: str, period: str) -> bool:
+    identifier = entity_id.split(".", 1)[-1]
+    if not _period_present(identifier, period):
+        return False
+    words = set(identifier.split("_"))
+    unit = str(state.attributes.get("unit_of_measurement", "")).lower()
+    if kind == "energy":
+        return unit in ("wh", "kwh", "mwh") and bool(words & {"energy", "energie", "verbrauch", "consumption"})
+    return (unit in ("€", "eur") or state.attributes.get("device_class") == "monetary") and bool(words & {"cost", "costs", "kosten"})
+
+
+def _paired_cost_ids(energy_id: str) -> set[str]:
+    """Only trust a cost counter sharing the full naming pattern of its energy counter.
+
+    E.g. sensor.foo_verbrauch_heute -> sensor.foo_kosten_heute.
+    Other cost entities can still be shown by HA, but are not silently paired.
+    """
+    domain, identifier = energy_id.split(".", 1)
+    candidates = set()
+    for energy_token in ("verbrauch", "energy", "energie", "consumption"):
+        for cost_token in ("kosten", "cost", "costs"):
+            words = identifier.split("_")
+            candidates.update(domain + "." + "_".join(cost_token if word == energy_token else word for word in words)
+                              for _ in (0,) if energy_token in words)
+    return candidates
+
+
 def period_match(hass: Any, device_name: str, power_id: str,
-                 registered_ids: set[str], kind: str, period: str) -> str | None:
-    """Reuse an existing period entity only if identity + unit + period are clear."""
-    tokens = PERIOD_TOKENS[period]
-    stems = {slug(device_name), slug(power_id.split(".", 1)[1])}
-    for suffix in ("_current_power", "_power", "_leistung"):
-        stems.update({stem.removesuffix(suffix) for stem in tuple(stems)})
-    stems.discard("")
-    valid = []
-    for entity_id, state in ((s.entity_id, s) for s in hass.states.async_all("sensor")):
-        ident = entity_id.split(".", 1)[1]
-        same_physical_device = entity_id in registered_ids
+                 registered_ids: set[str], kind: str, period: str,
+                 energy_id: str | None = None) -> str | None:
+    """Select a period value only when its source and period are sufficiently clear.
+
+    Prefer an existing *_verbrauch_heute utility meter over a parallel
+    *_today_energy sensor. If there are equally ranked candidates, do not guess.
+    Costs must correspond to the chosen energy naming scheme, otherwise
+    HeimEnergie computes costs from precisely that energy and the tariff.
+    """
+    if kind == "cost" and not energy_id:
+        return None
+    paired_costs = _paired_cost_ids(energy_id) if kind == "cost" else None
+    stems = _device_stems(device_name, power_id)
+    scores: list[tuple[int, str]] = []
+    for state in hass.states.async_all("sensor"):
+        entity_id = state.entity_id
+        if entity_id.startswith("sensor.heimenergie_"):
+            continue  # Never accidentally reuse sensors from our own integration.
+        ident = entity_id.split(".", 1)[-1]
+        on_device = entity_id in registered_ids
         same_prefix = any(ident.startswith(stem + "_") for stem in stems)
-        if not same_physical_device and not same_prefix:
+        if not (on_device or same_prefix):
             continue
-        if not any(t in ident for t in tokens):
+        if not _kind_valid(entity_id, state, kind, period):
             continue
-        attrs = state.attributes
-        unit = str(attrs.get("unit_of_measurement", "")).lower()
-        if kind == "energy":
-            if unit not in ("wh", "kwh", "mwh"):
-                continue
-            if not any(t in ident for t in ("energie", "energy", "verbrauch", "consumption")):
-                continue
+        if kind == "cost" and entity_id not in paired_costs:
+            continue
+        words = ident.split("_")
+        score = 20 if on_device else 10
+        if same_prefix:
+            score += 10
+        if kind == "cost":
+            score += 80  # Strict naming correspondence already established.
         else:
-            if unit not in ("€", "eur") and attrs.get("device_class") != "monetary":
-                continue
-            if not any(t in ident for t in ("kosten", "cost")):
-                continue
-        valid.append(entity_id)
-    return valid[0] if len(valid) == 1 else None
+            # Existing HA utility meters often follow *_verbrauch_heute.
+            # Smart plugs often follow *_today_energy and can coexist.
+            if any(words.index(t) > 0 and words[words.index(t) - 1] in ("verbrauch", "energie", "energy", "consumption")
+                   for t in _period_words(period) if t in words):
+                score += 60
+            if str(state.attributes.get("state_class", "")) in ("total", "total_increasing"):
+                score += 10
+            if "last_period" in state.attributes:
+                score += 15  # HA utility_meter exposes the prior period reading.
+            if state.attributes.get("device_class") == "energy":
+                score += 5
+        scores.append((score, entity_id))
+    scores.sort(reverse=True)
+    if not scores or (len(scores) > 1 and scores[0][0] == scores[1][0]):
+        return None
+    return scores[0][1]
 
 
 def device_selection(hass: Any, selected_devices: list[str],
@@ -127,8 +192,14 @@ def device_selection(hass: Any, selected_devices: list[str],
                         "source_energy": "", "registered_ids": []})
     for result in results:
         registered = set(result.pop("registered_ids"))
-        result["reuse"] = {
-            f"{kind}_{period}": period_match(hass, result["name"], result["power"], registered, kind, period)
-            for kind in ("energy", "cost") for period in PERIODS
-        }
+        reuse = {}
+        for period in PERIODS:
+            energy = period_match(hass, result["name"], result["power"], registered,
+                                  "energy", period)
+            reuse[f"energy_{period}"] = energy
+            reuse[f"cost_{period}"] = period_match(
+                hass, result["name"], result["power"], registered,
+                "cost", period, energy_id=energy
+            )
+        result["reuse"] = reuse
     return results

@@ -26,3 +26,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.async_close()
         return True
     return False
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove private meter checkpoints only on actual deletion, not on reload.
+
+    Home Assistant owns the entity and device registry cleanup. Never remove
+    preexisting user's sensor or utility-meter data.
+    """
+    from homeassistant.helpers.storage import Store
+
+    await Store(hass, 1, f"{DOMAIN}.{entry.entry_id}").async_remove()
