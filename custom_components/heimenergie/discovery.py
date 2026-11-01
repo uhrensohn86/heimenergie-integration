@@ -203,3 +203,33 @@ def device_selection(hass: Any, selected_devices: list[str],
             )
         result["reuse"] = reuse
     return results
+
+
+def rebind_consumer(hass: Any, device: dict[str, Any], consumer_name: str,
+                    *, fresh_session: bool = False) -> dict[str, Any]:
+    """Re-run matching after the human names the load behind the physical meter.
+
+    Never silently inherit existing daily/monthly cumulative counters when the
+    measured load has *changed*. Those counters may include the previous load.
+    The underlying source cumulative meter is instead baselined by coordinator.
+    """
+    result = {**device, "name": consumer_name.strip()}
+    if fresh_session:
+        result["reuse"] = {f"{kind}_{period}": None
+                           for kind in ("energy", "cost") for period in PERIODS}
+        return result
+    reg = er.async_get(hass)
+    registered: set[str] = set()
+    if result.get("device_id"):
+        registered = {e.entity_id for e in er.async_entries_for_device(
+            reg, result["device_id"]) if not e.disabled_by}
+    reuse: dict[str, str | None] = {}
+    for period in PERIODS:
+        energy = period_match(hass, result["name"], result["power"], registered,
+                              "energy", period)
+        reuse[f"energy_{period}"] = energy
+        reuse[f"cost_{period}"] = period_match(
+            hass, result["name"], result["power"], registered,
+            "cost", period, energy_id=energy)
+    result["reuse"] = reuse
+    return result

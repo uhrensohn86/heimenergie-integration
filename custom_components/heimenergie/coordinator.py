@@ -49,6 +49,7 @@ class HeimCoordinator:
         self.devices = list(entry.options.get("resolved", entry.data.get("resolved", [])))
         self.store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}")
         self.trackers = {}
+        self.consumer_history = {}  # Local metadata, including inactive consumers.
         self.mapping = {}
         self._listeners: set[Callable] = set()
         self._unsub = []
@@ -58,9 +59,23 @@ class HeimCoordinator:
     async def async_start(self) -> None:
         stored = await self.store.async_load()
         self.trackers = stored.get("trackers", {}) if isinstance(stored, dict) else {}
+        self.consumer_history = stored.get("consumer_history", {}) if isinstance(stored, dict) else {}
         now = dt_util.now()
+        # Keep trackers for inactive consumers in the private store, so changing
+        # a plug's measured load never assigns the previous load's kWh to it.
         for dev in self.devices:
-            item = normalize_tracker(self.trackers.setdefault(dev["power"], {}), now.date())
+            tracker_key = dev.get("tracker_key", dev["power"])
+            # Keep the old consumer mapping when a new appliance takes over
+            # the same meter. A rename updates the label on the same identity.
+            self.consumer_history[tracker_key] = {
+                "name": dev["name"],
+                "power": dev["power"],
+                "consumer_type": dev.get("consumer_type", "other"),
+                "consumer_device_id": dev.get("consumer_device_id", ""),
+                "source_energy": dev.get("source_energy", ""),
+                "reuse": dict(dev.get("reuse", {})),
+            }
+            item = normalize_tracker(self.trackers.setdefault(tracker_key, {}), now.date())
             # An HA restart never implies the previous W measurement remained
             # valid while Home Assistant was down.
             item["last_at"] = None
@@ -82,6 +97,8 @@ class HeimCoordinator:
         self._unsub.append(self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._on_stop))
         self._started = True
         self._sample(now)
+        # Persist mapping metadata even if no metered watts are reported yet.
+        self.store.async_delay_save(self._store_payload, 5)
 
     @property
     def options(self) -> dict:
@@ -95,16 +112,19 @@ class HeimCoordinator:
     def _tick(self, when: datetime) -> None:
         self._sample(dt_util.as_local(when))
 
+    def _store_payload(self) -> dict:
+        return {"trackers": self.trackers, "consumer_history": self.consumer_history}
+
     @callback
     def _on_stop(self, event) -> None:
-        self.hass.async_create_task(self.store.async_save({"trackers": self.trackers}))
+        self.hass.async_create_task(self.store.async_save(self._store_payload()))
 
     @callback
     def _sample(self, when: datetime) -> None:
         modified = False
         for dev in self.devices:
             power_id = dev["power"]
-            tracked = normalize_tracker(self.trackers.setdefault(power_id, {}), when.date())
+            tracked = normalize_tracker(self.trackers.setdefault(dev.get("tracker_key", power_id), {}), when.date())
             source = dev.get("source_energy", "")
             if source:
                 current = _kwh(self.hass, source)
@@ -138,7 +158,7 @@ class HeimCoordinator:
         # Calling Store.async_delay_save for every frequent sensor update
         # continuously postpones its write in recent HA versions.
         if modified and self.hass.loop.time() >= self._next_save_at:
-            self.store.async_delay_save(lambda: {"trackers": self.trackers}, 5)
+            self.store.async_delay_save(self._store_payload, 5)
             self._next_save_at = self.hass.loop.time() + 120
         for callback_fn in tuple(self._listeners):
             callback_fn()
@@ -153,8 +173,8 @@ class HeimCoordinator:
         return lambda: self._listeners.discard(update)
 
     def derived_energy(self, dev: dict, period: str) -> float:
-        self.trackers.setdefault(dev["power"], {})
-        tracked = normalize_tracker(self.trackers[dev["power"]], dt_util.now().date())
+        self.trackers.setdefault(dev.get("tracker_key", dev["power"]), {})
+        tracked = normalize_tracker(self.trackers[dev.get("tracker_key", dev["power"])], dt_util.now().date())
         return float(tracked["periods"][period]["kwh"]) if tracked.get("has_sample") else None
 
     def energy(self, dev: dict, period: str) -> float | None:
@@ -189,4 +209,4 @@ class HeimCoordinator:
         for unsub in self._unsub:
             unsub()
         self._unsub.clear()
-        await self.store.async_save({"trackers": self.trackers})
+        await self.store.async_save(self._store_payload())

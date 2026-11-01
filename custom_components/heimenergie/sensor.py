@@ -40,7 +40,7 @@ class HeimSensor(SensorEntity):
             self._attr_device_class = SensorDeviceClass.MONETARY
         if device is not None:
             self._attr_device_info = DeviceInfo(
-                identifiers={(DOMAIN, f"{coordinator.entry.entry_id}_{slug(device['power'])}")},
+                identifiers={(DOMAIN, f"{coordinator.entry.entry_id}_{slug(device.get('tracker_key', device['power']))}")},
                 name=f"HeimEnergie {device['name']}",
                 manufacturer="HeimEnergie",
             )
@@ -61,6 +61,9 @@ class HeimSensor(SensorEntity):
                 "price_fixed": self.coordinator.options.get("price_fixed", 0),
                 "base_monthly": self.coordinator.base_monthly(),
                 "only_monitored_devices": True,
+                "archived_consumers": max(0, len(self.coordinator.consumer_history)
+                                          - len({d.get("tracker_key", d["power"])
+                                                 for d in self.coordinator.devices})),
             }
         if self.kind == "summary":
             known = sum(self.coordinator.cost(d, self.key.rsplit("_",1)[-1]) is not None
@@ -108,7 +111,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
         co.mapping["entity_keys"].setdefault(key, []).append((target, field))
 
     for d in co.devices:
-        row = {"name": d["name"], "power": d["power"]}
+        row = {"name": d["name"], "power": d["power"],
+               "meter_name": d.get("meter_name", d["name"]),
+               "consumer_type": d.get("consumer_type", "other"),
+               "consumer_device_id": d.get("consumer_device_id", "")}
         co.mapping["devices"].append(row)
         for period in PERIODS:
             for kind in ("energy", "cost"):
@@ -117,7 +123,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 if existing:
                     row[field] = existing
                     continue
-                key = f"device_{slug(d['power'])}_{field}"
+                key = f"device_{slug(d.get('tracker_key', d['power']))}_{field}"
                 name = f"HeimEnergie {d['name']} {PERIOD_LABELS[period]} {'Energie' if kind=='energy' else 'Kosten'}"
                 if kind == "energy":
                     calculate = (lambda device=d, period=period: co.derived_energy(device, period))
@@ -160,8 +166,15 @@ async def async_setup_entry(hass, entry, async_add_entities):
     own_prefix = f"{DOMAIN}_{entry.entry_id}_device_"
     desired_ids = {entity.unique_id for entity in entities}
     registry = er.async_get(hass)
+    active_trackers = {d.get("tracker_key", d["power"]) for d in co.devices}
+    archived_prefixes = {
+        f"{own_prefix}{slug(key)}_" for key in co.trackers
+        if key not in active_trackers
+    }
     for previous in er.async_entries_for_config_entry(registry, entry.entry_id):
-        if previous.unique_id.startswith(own_prefix) and previous.unique_id not in desired_ids:
+        if (previous.unique_id.startswith(own_prefix)
+                and previous.unique_id not in desired_ids
+                and not any(previous.unique_id.startswith(prefix) for prefix in archived_prefixes)):
             registry.async_remove(previous.entity_id)
 
     async_add_entities(entities)

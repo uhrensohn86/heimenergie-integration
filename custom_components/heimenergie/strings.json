@@ -10,14 +10,29 @@
           "power_entities": "Leistungssensoren ohne Geräteeintrag (optional)",
           "price_entity": "Arbeitspreis-Entität (optional)",
           "price_fixed": "Ersatz-Arbeitspreis (€/kWh)",
-          "base_monthly": "Monatlicher Grundpreis (€)"
+          "base_monthly": "Monatlicher Grundpreis (€)",
+          "edit_consumers": "Bereits zugeordnete Verbraucher erneut bearbeiten (optional)"
+        }
+      },
+      "consumer": {
+        "title": "Verbraucher zuordnen",
+        "description": "Messgerät: {meter}. Wähle ein vorhandenes Home-Assistant-Gerät ODER gib den Namen des angeschlossenen Verbrauchers ein. Umbenennen behält die bisherige Historie. Bei einem echten Wechsel der angeschlossenen Last die neue Messung ausdrücklich aktivieren.",
+        "data": {
+          "consumer_device": "Vorhandenes HA-Gerät (optional)",
+          "consumer_name": "Verbrauchername (bei neuem Verbraucher)",
+          "consumer_type": "Verbrauchertyp",
+          "new_session": "Anderen Verbraucher angeschlossen – neue Messung beginnen"
         }
       }
     },
     "error": {
-      "no_power_sensor": "In der Auswahl wurde kein geeigneter Leistungssensor gefunden. Bitte Geräte oder passende Leistungssensoren wählen."
+      "no_power_sensor": "In der Auswahl wurde kein geeigneter Leistungssensor gefunden. Bitte Geräte oder passende Leistungssensoren wählen.",
+      "missing_consumer": "Bitte einen Verbraucher auswählen oder einen Namen eingeben.",
+      "unknown_consumer_device": "Das ausgewählte Home-Assistant-Gerät wurde nicht gefunden."
     },
-    "abort": {"already_configured": "HeimEnergie ist bereits eingerichtet."}
+    "abort": {
+      "already_configured": "HeimEnergie ist bereits eingerichtet."
+    }
   },
   "options": {
     "step": {
@@ -28,10 +43,25 @@
           "power_entities": "Leistungssensoren ohne Geräteeintrag (optional)",
           "price_entity": "Arbeitspreis-Entität (optional)",
           "price_fixed": "Ersatz-Arbeitspreis (€/kWh)",
-          "base_monthly": "Monatlicher Grundpreis (€)"
+          "base_monthly": "Monatlicher Grundpreis (€)",
+          "edit_consumers": "Bereits zugeordnete Verbraucher erneut bearbeiten"
+        }
+      },
+      "consumer": {
+        "title": "Verbraucher zuordnen",
+        "description": "Messgerät: {meter}. Wähle ein vorhandenes Home-Assistant-Gerät ODER gib den Namen des angeschlossenen Verbrauchers ein. Umbenennen behält die bisherige Historie. Bei einem echten Wechsel der angeschlossenen Last die neue Messung ausdrücklich aktivieren.",
+        "data": {
+          "consumer_device": "Vorhandenes HA-Gerät (optional)",
+          "consumer_name": "Verbrauchername (bei neuem Verbraucher)",
+          "consumer_type": "Verbrauchertyp",
+          "new_session": "Anderen Verbraucher angeschlossen – neue Messung beginnen"
         }
       }
     },
-    "error": {"no_power_sensor": "Keine passenden Leistungssensoren gefunden."}
+    "error": {
+      "no_power_sensor": "Keine passenden Leistungssensoren gefunden.",
+      "missing_consumer": "Bitte einen Verbraucher auswählen oder einen Namen eingeben.",
+      "unknown_consumer_device": "Das ausgewählte Home-Assistant-Gerät wurde nicht gefunden."
+    }
   }
 }
