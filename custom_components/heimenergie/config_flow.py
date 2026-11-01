@@ -26,7 +26,7 @@ def schema(data: dict | None = None):
             selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor", multiple=True)),
         **entity_price,
         vol.Required(CONF_PRICE_FIXED, default=data.get(CONF_PRICE_FIXED, 0.0)):
-            selector.NumberSelector(selector.NumberSelectorConfig(min=0, max=10, step=0.0001, mode=selector.NumberSelectorMode.BOX)),
+            selector.NumberSelector(selector.NumberSelectorConfig(min=0, max=10, step="any", mode=selector.NumberSelectorMode.BOX)),
         vol.Required(CONF_BASE_MONTHLY, default=data.get(CONF_BASE_MONTHLY, 0.0)):
             selector.NumberSelector(selector.NumberSelectorConfig(min=0, max=1000, step=0.01, mode=selector.NumberSelectorMode.BOX)),
     })
