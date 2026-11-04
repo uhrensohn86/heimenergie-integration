@@ -1,9 +1,9 @@
-# HeimEnergie Integration — v0.2.3-alpha (experimentell)
+# HeimEnergie Integration — v0.2.4-alpha (experimentell)
 
 Backend für das [HeimEnergie Dashboard](https://github.com/uhrensohn86/heimenergie-dashboard).
 **Kein Netzbezugszähler erforderlich.** Daten und Gerätekonfiguration bleiben ausschließlich lokal in Home Assistant. Keine Benutzer-YAML, keine manuell zu erstellenden Home-Assistant-Helfer.
 
-> **Alpha-Version**: Die bisherigen Sensoren und Zähler wurden in Home Assistant getestet. Der neue v0.2.3-Einrichtungsablauf benötigt noch einen Praxistest auf Android und Home Assistant. Vor dem produktiven Einsatz vollständiges Backup erstellen. Die Integration erstellt eigene Sensoren, verändert oder löscht jedoch keine bestehenden Sensoren/Utility Meter.
+> **Alpha-Version**: Die bisherigen Sensoren und Zähler wurden in Home Assistant getestet. Die Zuordnung von Messgerät und Verbraucher wurde unter Home Assistant getestet; das neue v0.2.4-Namensfallback ist noch nicht auf der echten Installation getestet. Vor dem produktiven Einsatz vollständiges Backup erstellen. Die Integration erstellt eigene Sensoren, verändert oder löscht jedoch keine bestehenden Sensoren/Utility Meter.
 
 ## Einrichtung
 
@@ -74,3 +74,20 @@ Die automatische Zuordnung bleibt heuristisch: Namensgleichheit beweist keine id
 5. Einen tatsächlichen Steckdosenwechsel erst separat testen, wenn die normale Zuordnung funktioniert.
 
 Dies ist noch keine vollständige, produktiv geprüfte Historienmigration über verschiedene Netz- und Messgeräte hinweg. Exakte rückwirkende Zeitanteile und Tarifhistorien sind weiterhin nicht implementiert.
+
+## Neu in v0.2.4-alpha – Messgeräte-Namen als kontrollierter Fallback
+
+- HeimEnergie sucht vorhandene Zeitraumsensoren weiterhin **zuerst anhand des Verbrauchernamens**.
+- Nur falls für einen Zeitraum kein eindeutiger Treffer gefunden wurde, darf zusätzlich der **technische Messgerätename** verwendet werden. Voraussetzung: Sein normalisierter Namensanfang muss mit dem ausgewählten Leistungssensor übereinstimmen (keine willkürliche unscharfe Suche). So können legacy-Zähler nach einer Umbenennung des Verbrauchers wiedererkannt werden.
+- Beispiel mit frei erfundenen Namen: *Media Plug* misst *Media Console 7*; `sensor.media_plug_verbrauch_monat` kann wiederverwendet werden, wenn die Leistung `sensor.media_plug_current_power` stammt.
+- Kosten werden nur aus einem eindeutig gepaarten Kostensensor übernommen. Falls die Kopplung nicht nachweisbar ist, werden die Kosten aus dem gewählten kWh-Sensor und Arbeitspreis berechnet.
+- **Keine Änderung** bei `isolation_mode` oder `new_session`: Ein ausdrücklich begonnener neuer Verbraucher-Messzeitraum übernimmt keine alten kumulierten Zähler der Steckdose.
+- Kein automatisches Zurücksetzen oder Rückdatieren von HeimEnergie-Zählern; bereits vorhandene fremde Sensoren werden nicht verändert. Alte eigene Entitäten können bei Neuzuordnung entsprechend den bisherigen Regeln aus der Registry entfernt werden; Recorder-Historie bleibt davon getrennt.
+
+### Upgrade von v0.2.3
+
+1. Vor dem Update ein Home-Assistant-Backup erstellen.
+2. Code per HACS aktualisieren und Home Assistant neu starten.
+3. Unter **HeimEnergie → Konfigurieren** die bisherigen Messgeräte unverändert auswählen und die Konfiguration speichern. Bereits zugeordnete Verbraucher *nicht* als neu angeschlossen markieren.
+4. Den Katalogsensor kontrollieren: Die vorhandenen Zeitraumsensoren eines Messgeräts sollen jetzt auch bei abweichendem Verbrauchernamen erkannt werden.
+5. Reale Werte und historischen Verlauf mit der bisherigen Installation vergleichen. **Dieser Fix ist eine gezielte Alpha-Korrektur und noch kein vollständiger historischer Datenimport.**

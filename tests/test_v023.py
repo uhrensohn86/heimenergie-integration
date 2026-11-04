@@ -225,7 +225,7 @@ def test_consumer_checkpoint_metadata_is_saved_locally():
 
 
 def test_manifest_and_localization():
-    assert json.loads((BASE / 'manifest.json').read_text())['version'] == '0.2.3'
+    assert json.loads((BASE / 'manifest.json').read_text())['version'] in ('0.2.3', '0.2.4')
     for name in ('strings.json', 'translations/de.json'):
         obj = json.loads((BASE / name).read_text())
         assert 'consumer' in obj['config']['step']

@@ -105,7 +105,8 @@ def _paired_cost_ids(energy_id: str) -> set[str]:
 
 def period_match(hass: Any, device_name: str, power_id: str,
                  registered_ids: set[str], kind: str, period: str,
-                 energy_id: str | None = None) -> str | None:
+                 energy_id: str | None = None,
+                 *, match_power_prefix: bool = True) -> str | None:
     """Select a period value only when its source and period are sufficiently clear.
 
     Prefer an existing *_verbrauch_heute utility meter over a parallel
@@ -116,7 +117,8 @@ def period_match(hass: Any, device_name: str, power_id: str,
     if kind == "cost" and not energy_id:
         return None
     paired_costs = _paired_cost_ids(energy_id) if kind == "cost" else None
-    stems = _device_stems(device_name, power_id)
+    stems = (_device_stems(device_name, power_id) if match_power_prefix
+             else {slug(device_name)})
     scores: list[tuple[int, str]] = []
     for state in hass.states.async_all("sensor"):
         entity_id = state.entity_id
@@ -205,31 +207,79 @@ def device_selection(hass: Any, selected_devices: list[str],
     return results
 
 
+def _meter_alias_is_verified(meter_name: str, power_id: str) -> bool:
+    """Allow a second, technical-name lookup only for a verifiable meter alias.
+
+    The alias must identify the *selected power sensor*, not just resemble an
+    arbitrary device elsewhere in Home Assistant. Avoids matching generic
+    names like "Smart Plug" against unrelated period counters.
+    """
+    meter_stem = slug(meter_name)
+    power_stem = slug(power_id.split(".", 1)[-1])
+    return bool(meter_stem and (power_stem == meter_stem or
+                                power_stem.startswith(meter_stem + "_")))
+
+
 def rebind_consumer(hass: Any, device: dict[str, Any], consumer_name: str,
                     *, fresh_session: bool = False) -> dict[str, Any]:
-    """Re-run matching after the human names the load behind the physical meter.
+    """Re-match existing counters using consumer identity, then a verified meter alias.
 
-    Never silently inherit existing daily/monthly cumulative counters when the
-    measured load has *changed*. Those counters may include the previous load.
-    The underlying source cumulative meter is instead baselined by coordinator.
+    Counter lookup prioritizes the logical consumer. If that does not resolve
+    a given period, the technical meter name can recover legacy counters
+    named after the physical plug (e.g. Meter Alpha -> MeterAlpha9).
+    The meter-name fallback is only enabled if its normalized prefix matches
+    the actual selected power entity, never by arbitrary fuzzy similarity.
+
+    A real change of connected load must set fresh_session=True; otherwise
+    old period totals might be incorrectly assigned to the new appliance.
     """
     result = {**device, "name": consumer_name.strip()}
     if fresh_session:
         result["reuse"] = {f"{kind}_{period}": None
                            for kind in ("energy", "cost") for period in PERIODS}
         return result
+
     reg = er.async_get(hass)
     registered: set[str] = set()
     if result.get("device_id"):
         registered = {e.entity_id for e in er.async_entries_for_device(
             reg, result["device_id"]) if not e.disabled_by}
+
+    meter_name = str(result.get("meter_name") or device.get("meter_name")
+                     or device.get("name") or "")
+    verified_meter_alias = (meter_name if _meter_alias_is_verified(
+        meter_name, result["power"]) else "")
+    # A physical device may offer a native (partial-period) energy counter.
+    # First prefer the human-named consumer's old utility meters, then the
+    # verified technical alias; only then consider generic same-HA-device
+    # candidates. Without this ordering, a native "today_energy" attached to
+    # the plug could prevent finding "meter_alpha_verbrauch_heute".
+    searches: list[tuple[str, set[str], bool]] = [(result["name"], set(), False)]
+    if verified_meter_alias and slug(verified_meter_alias) != slug(result["name"]):
+        searches.append((verified_meter_alias, registered, True))
+    searches.append((result["name"], registered, True))
+
     reuse: dict[str, str | None] = {}
     for period in PERIODS:
-        energy = period_match(hass, result["name"], result["power"], registered,
-                              "energy", period)
-        reuse[f"energy_{period}"] = energy
-        reuse[f"cost_{period}"] = period_match(
-            hass, result["name"], result["power"], registered,
-            "cost", period, energy_id=energy)
+        chosen_energy = None
+        for search_name, search_scope, power_prefix in searches:
+            chosen_energy = period_match(hass, search_name, result["power"],
+                                         search_scope, "energy", period,
+                                         match_power_prefix=power_prefix)
+            if chosen_energy:
+                break
+        reuse[f"energy_{period}"] = chosen_energy
+        chosen_cost = None
+        if chosen_energy:
+            # A cost source must share the *entire* energy naming pattern;
+            # never mix a newly started energy counter with old period costs.
+            for search_name, search_scope, power_prefix in searches:
+                chosen_cost = period_match(hass, search_name, result["power"],
+                                           search_scope, "cost", period,
+                                           energy_id=chosen_energy,
+                                           match_power_prefix=power_prefix)
+                if chosen_cost:
+                    break
+        reuse[f"cost_{period}"] = chosen_cost
     result["reuse"] = reuse
     return result
