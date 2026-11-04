@@ -116,7 +116,7 @@ def test_owned_registry_cleanup_is_narrow():
 
 def test_manifest():
     manifest = json.loads((BASE / 'manifest.json').read_text())
-    assert manifest['version'] in ('0.2.2', '0.2.3', '0.2.4')
+    assert tuple(map(int, manifest['version'].split('.'))) >= (0, 2, 2)
     assert manifest['domain'] == 'heimenergie'
 
 

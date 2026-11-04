@@ -117,7 +117,7 @@ def test_ambiguous_candidates_do_not_get_guessed():
 
 
 def test_manifest():
-    assert json.loads((BASE/'manifest.json').read_text())['version']=='0.2.4'
+    assert tuple(map(int, json.loads((BASE/'manifest.json').read_text())['version'].split('.'))) >= (0, 2, 4)
 
 if __name__=='__main__':
     for key,value in sorted(globals().copy().items()):

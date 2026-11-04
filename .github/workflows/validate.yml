@@ -1,0 +1,35 @@
+name: Tests und Syntax
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python-Syntax
+        run: python -m compileall -q custom_components/heimenergie
+      - name: Manifest validieren
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('custom_components/heimenergie/manifest.json')
+          obj = json.loads(p.read_text(encoding='utf-8'))
+          assert obj['domain'] == 'heimenergie'
+          assert isinstance(obj.get('version'), str) and obj['version'], 'Version in manifest.json fehlt'
+          json.loads(Path('hacs.json').read_text(encoding='utf-8'))
+          print('Manifest und hacs.json OK')
+          PY
+      - name: Regressionstests 0.2.2
+        run: python tests/test_v022.py
+      - name: Regressionstests 0.2.3
+        run: python tests/test_v023.py
+      - name: Regressionstests 0.2.4
+        run: python tests/test_v024.py

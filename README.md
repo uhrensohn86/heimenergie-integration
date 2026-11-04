@@ -1,9 +1,14 @@
-# HeimEnergie Integration — v0.2.4-alpha (experimentell)
+# HeimEnergie Integration — v0.2.5-alpha (experimentell)
 
 Backend für das [HeimEnergie Dashboard](https://github.com/uhrensohn86/heimenergie-dashboard).
 **Kein Netzbezugszähler erforderlich.** Daten und Gerätekonfiguration bleiben ausschließlich lokal in Home Assistant. Keine Benutzer-YAML, keine manuell zu erstellenden Home-Assistant-Helfer.
 
 > **Alpha-Version**: Die bisherigen Sensoren und Zähler wurden in Home Assistant getestet. Die Zuordnung von Messgerät und Verbraucher wurde unter Home Assistant getestet; das neue v0.2.4-Namensfallback ist noch nicht auf der echten Installation getestet. Vor dem produktiven Einsatz vollständiges Backup erstellen. Die Integration erstellt eigene Sensoren, verändert oder löscht jedoch keine bestehenden Sensoren/Utility Meter.
+
+## Neu in v0.2.5 (Pflege-Release)
+
+- Erstes nachvollziehbares GitHub-Release mit Changelog, CI-Tests und HACS-Versionskennung.
+- **Keine Änderung an Sensorberechnung, Gerätezuordnung oder bestehenden Entitäten.**
 
 ## Einrichtung
 
